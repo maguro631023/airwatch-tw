@@ -258,7 +258,7 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
         空氣品質：環境部環境資料開放平臺「空氣品質指標(AQI)」資料集（AQX_P_432）。<br>
         氣象觀測：中央氣象署開放資料平臺「自動氣象站資料」（O-A0003-001）。<br>
         熱指數採 Rothfusz 迴歸式由氣溫與相對濕度推算，屬於體感估計值，非官方發布之熱危害警示。<br>
-        本頁為個人參考工具，不能取代官方警報或醫療判斷。
+        本頁為個人參考工具，不能取代官方警報或醫療判斷。<br>版本：<span id="build"></span>
       </p>
     </section>
   </div>
@@ -270,6 +270,7 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 "use strict";
 
 /* ---------- storage with in-memory fallback ---------- */
+const BUILD = "2026-09-06c";
 const mem = {};
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return k in mem ? mem[k] : null; } },
@@ -349,13 +350,29 @@ function toast(msg){
 
 /* ---------- data fetch ---------- */
 async function getAir(lat, lon){
-  const url = `https://data.moenv.gov.tw/api/v2/aqx_p_432?api_key=${encodeURIComponent(cfg.k1)}&limit=1000&format=JSON`;
-  const r = await fetch(url);
-  if(!r.ok) throw new Error(`環境部 API 回應 ${r.status}，請確認金鑰是否正確`);
-  const j = await r.json();
-  const rows = j.records || j.result?.records || [];
-  if(!rows.length) throw new Error("環境部 API 沒有回傳測站資料");
+  if(!cfg.k1) throw new Error("尚未設定環境部 API 金鑰");
+  let j = null, lastErr = "";
 
+  // 官方文件的資料集代碼為大寫，部分文件寫小寫，兩種都試
+  for(const code of ["AQX_P_432", "aqx_p_432"]){
+    const url = `https://data.moenv.gov.tw/api/v2/${code}?api_key=${encodeURIComponent(cfg.k1)}&limit=1000&format=JSON`;
+    let r;
+    try{ r = await fetch(url); }
+    catch(e){ throw new Error("FETCH_FAIL"); }
+
+    const body = await r.text();
+    if(!r.ok){ lastErr = `${code} → HTTP ${r.status}：${body.slice(0,180)}`; continue; }
+    let parsed;
+    try{ parsed = JSON.parse(body); }
+    catch(e){ lastErr = `${code} → 回應不是 JSON：${body.slice(0,180)}`; continue; }
+
+    const rows = parsed.records || parsed.result?.records || [];
+    if(rows.length){ j = parsed; break; }
+    lastErr = `${code} → 回應成功但沒有測站資料：${body.slice(0,180)}`;
+  }
+  if(!j) throw new Error(lastErr || "環境部 API 沒有回傳資料");
+
+  const rows = j.records || j.result?.records || [];
   let best = null, bestD = Infinity;
   for(const raw of rows){
     const s = {}; for(const k in raw) s[k.toLowerCase()] = raw[k];
@@ -364,7 +381,7 @@ async function getAir(lat, lon){
     const d = haversine(lat, lon, la, lo);
     if(d < bestD){ bestD = d; best = s; }
   }
-  if(!best) throw new Error("找不到具座標的空品測站");
+  if(!best) throw new Error("回傳的測站資料中沒有座標欄位");
   return {
     site: best.sitename, county: best.county, dist: bestD,
     aqi: num(best.aqi), status: best.status, pollutant: best.pollutant || "",
@@ -567,10 +584,11 @@ async function tick(){
     pushLog(air, wx, hi);
     store.set("aw.last", JSON.stringify({air, wx, at:Date.now()}));
   }catch(e){
-    const net = e.message.includes("Failed to fetch") || e.message.includes("Load failed");
-    diag(net ? "空品資料連線失敗" : "空品資料取得失敗",
-         net ? "瀏覽器擋下了跨來源請求，或網路不通。請用 Safari 直接開一次 API 網址測試；若網址能開但這裡不行，就是 CORS 問題，需要改用代理。"
-             : e.message);
+    if(e.message === "FETCH_FAIL")
+      diag("連不上環境部 API",
+           "可能是網路不通，或瀏覽器擋下跨來源請求（CORS）。請用 Safari 直接開一次 API 網址：能開但這裡不行，就是 CORS，需要架代理。");
+    else
+      diag("空品資料取得失敗", e.message);
     toast("資料取得失敗，詳見上方訊息");
   }finally{ btn.style.opacity = 1; }
 }
@@ -960,6 +978,7 @@ function applyHash(){
 
 /* ---------- boot ---------- */
 applyHash();
+$("#build").textContent = BUILD;
 drawLog();
 const cached = JSON.parse(store.get("aw.last")||"null");
 if(cached && Date.now()-cached.at < 6*3600*1000){
