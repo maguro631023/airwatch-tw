@@ -1,5 +1,5 @@
 /* 版本號每次改動都要遞增，否則舊版會被鎖在快取裡 */
-const VERSION = "airwatch-v3";
+const VERSION = "airwatch-v4";
 const SHELL = ["./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

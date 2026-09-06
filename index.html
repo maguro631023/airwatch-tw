@@ -270,7 +270,7 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 "use strict";
 
 /* ---------- storage with in-memory fallback ---------- */
-const BUILD = "2026-09-06c";
+const BUILD = "2026-09-06d";
 const mem = {};
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return k in mem ? mem[k] : null; } },
@@ -349,6 +349,18 @@ function toast(msg){
 }
 
 /* ---------- data fetch ---------- */
+function pickRows(parsed){
+  if(Array.isArray(parsed)) return parsed;
+  if(!parsed || typeof parsed !== "object") return [];
+  if(Array.isArray(parsed.records)) return parsed.records;
+  if(Array.isArray(parsed.result?.records)) return parsed.result.records;
+  // 其他包裝：找出第一個看起來像測站清單的陣列
+  for(const v of Object.values(parsed))
+    if(Array.isArray(v) && v.length && typeof v[0] === "object" &&
+       ("sitename" in v[0] || "SiteName" in v[0] || "aqi" in v[0] || "AQI" in v[0])) return v;
+  return [];
+}
+
 async function getAir(lat, lon){
   if(!cfg.k1) throw new Error("尚未設定環境部 API 金鑰");
   let j = null, lastErr = "";
@@ -366,13 +378,13 @@ async function getAir(lat, lon){
     try{ parsed = JSON.parse(body); }
     catch(e){ lastErr = `${code} → 回應不是 JSON：${body.slice(0,180)}`; continue; }
 
-    const rows = parsed.records || parsed.result?.records || [];
-    if(rows.length){ j = parsed; break; }
+    const rows = pickRows(parsed);
+    if(rows.length){ j = rows; break; }
     lastErr = `${code} → 回應成功但沒有測站資料：${body.slice(0,180)}`;
   }
   if(!j) throw new Error(lastErr || "環境部 API 沒有回傳資料");
 
-  const rows = j.records || j.result?.records || [];
+  const rows = j;
   let best = null, bestD = Infinity;
   for(const raw of rows){
     const s = {}; for(const k in raw) s[k.toLowerCase()] = raw[k];
