@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17242B">
+<title>此刻空氣｜即時空污與溫濕度警報</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{
+  --haze:#E7EDEF; --panel:#FFFFFF; --ink:#17242B; --muted:#5C7079; --line:#CBD8DD;
+  --g0:#009966; --g1:#FFDE33; --g2:#FF9933; --g3:#CC0033; --g4:#660099; --g5:#7E0023;
+  --pad:18px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--haze); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  font-size:16px; line-height:1.6;
+  padding-bottom:env(safe-area-inset-bottom);
+  overscroll-behavior-y:contain;
+}
+button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
+input,select{font:inherit;color:inherit}
+
+/* ---------- header ---------- */
+.bar{
+  display:flex;align-items:center;gap:12px;
+  padding:calc(env(safe-area-inset-top) + 12px) var(--pad) 12px;
+  background:var(--ink);color:#fff;
+}
+.bar h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.06em;flex:1}
+.bar .stamp{font-size:12px;color:#9FB4BC;font-variant-numeric:tabular-nums}
+.iconbtn{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.1)}
+.iconbtn svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round}
+
+/* ---------- hero flag ---------- */
+.flag{padding:26px var(--pad) 22px;transition:background-color .5s ease;position:relative}
+.flag.dark{color:#fff}.flag.light{color:#17242B}
+.flag .lv{font-size:19px;font-weight:700;letter-spacing:.08em;margin:0}
+.flag .num{font-size:88px;line-height:.92;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;margin:6px 0 0}
+.flag .num small{font-size:15px;font-weight:600;letter-spacing:.14em;vertical-align:super;opacity:.72;margin-left:8px}
+.flag .who{margin:10px 0 0;font-size:14px;opacity:.9}
+.flag .who b{font-weight:700}
+.scale{display:flex;height:6px;margin-top:16px;border-radius:3px;overflow:hidden;opacity:.65}
+.scale i{flex:1}
+.scale i.on{opacity:1;box-shadow:inset 0 0 0 99px rgba(255,255,255,.45)}
+
+/* ---------- sections ---------- */
+.wrap{padding:0 var(--pad)}
+section{background:var(--panel);margin:14px 0;padding:16px var(--pad);border-radius:14px}
+section > h2{margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--muted)}
+
+/* climate strip */
+.climate{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;margin:14px 0;background:var(--panel);border-radius:14px;overflow:hidden}
+.climate div{padding:16px 10px;text-align:center;border-right:1px solid var(--line)}
+.climate div:last-child{border-right:none}
+.climate .v{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;display:block;line-height:1.15}
+.climate .v span{font-size:14px;font-weight:600;margin-left:2px}
+.climate .k{font-size:12px;color:var(--muted);display:block;margin-top:2px}
+.heatbar{height:4px;border-radius:2px;margin-top:8px;background:var(--line)}
+
+/* advice */
+.advice{margin:0;padding:0;list-style:none}
+.advice li{position:relative;padding-left:18px;margin-bottom:8px;font-size:15px}
+.advice li:last-child{margin-bottom:0}
+.advice li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;border-radius:2px;background:var(--dot,#5C7079)}
+
+/* pollutants */
+.poll{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 10px}
+.poll .cell .n{font-size:12px;color:var(--muted)}
+.poll .cell .d{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.poll .cell .d u{font-size:11px;font-weight:500;color:var(--muted);text-decoration:none;margin-left:3px}
+.poll .cell .g{height:3px;background:var(--line);border-radius:2px;margin-top:5px;overflow:hidden}
+.poll .cell .g i{display:block;height:100%;border-radius:2px}
+
+/* alert banner */
+#alert{display:none;padding:14px var(--pad);color:#fff;font-size:15px;font-weight:600;line-height:1.5}
+#alert.on{display:block}
+#alert button{float:right;font-size:13px;opacity:.85;text-decoration:underline;margin-left:10px}
+
+/* log */
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;color:var(--muted);padding-bottom:6px;font-size:12px}
+td{padding:6px 0;border-top:1px solid var(--line)}
+td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+.act{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.act button{border:1px solid var(--line);border-radius:9px;padding:9px 14px;font-size:14px;background:#fff}
+.act button.solid{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* settings */
+#panel{position:fixed;inset:0;background:var(--haze);z-index:40;overflow-y:auto;transform:translateY(100%);transition:transform .28s ease;padding-bottom:40px}
+#panel.open{transform:translateY(0)}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.field p{margin:4px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+.field p a{color:var(--ink)}
+.field input[type=text],.field input[type=number],.field select{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff
+}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:15px}
+.check input{width:20px;height:20px;accent-color:var(--ink)}
+.note{font-size:12.5px;color:var(--muted);line-height:1.6}
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--ink);color:#fff;
+  padding:11px 18px;border-radius:22px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:60}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+:focus-visible{outline:3px solid #17242B;outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>此刻空氣</h1>
+  <span class="stamp" id="stamp">尚未更新</span>
+  <button class="iconbtn" id="refresh" aria-label="立即更新">
+    <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+  </button>
+  <button class="iconbtn" id="gear" aria-label="設定">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></svg>
+  </button>
+</div>
+
+<div id="alert" role="status"></div>
+
+<div class="flag light" id="flag">
+  <p class="lv" id="lv">等待定位</p>
+  <p class="num" id="aqi">--<small>AQI</small></p>
+  <p class="who" id="who">開啟定位後，系統會自動找出離你最近的空品測站</p>
+  <div class="scale" id="scale"></div>
+</div>
+
+<div class="wrap">
+
+  <div class="climate">
+    <div><b class="v" id="temp">--<span>°C</span></b><span class="k">氣溫</span><div class="heatbar" id="tbar"></div></div>
+    <div><b class="v" id="hum">--<span>%</span></b><span class="k">相對濕度</span><div class="heatbar" id="hbar"></div></div>
+    <div><b class="v" id="hi">--<span>°C</span></b><span class="k">熱指數體感</span><div class="heatbar" id="ibar"></div></div>
+  </div>
+
+  <section>
+    <h2>現在該怎麼做</h2>
+    <ul class="advice" id="advice"><li>設定 API 金鑰並允許定位後開始監測。</li></ul>
+  </section>
+
+  <section>
+    <h2>污染物濃度</h2>
+    <div class="poll" id="poll"></div>
+    <p class="note" id="src" style="margin-top:14px"></p>
+  </section>
+
+  <section>
+    <h2>暴露紀錄</h2>
+    <table><thead><tr><th>時間</th><th>測站</th><th>AQI</th><th>PM2.5</th><th>溫/濕</th></tr></thead>
+    <tbody id="log"><tr><td colspan="5" style="color:var(--muted);border-top:none">尚無紀錄</td></tr></tbody></table>
+    <div class="act">
+      <button id="csv">匯出 CSV</button>
+      <button id="clear">清除紀錄</button>
+    </div>
+  </section>
+</div>
+
+<div id="panel">
+  <div class="bar"><h1>設定</h1><button class="iconbtn" id="close" aria-label="關閉">
+    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="wrap">
+    <section>
+      <h2>資料來源金鑰</h2>
+      <div class="field">
+        <label for="k1">環境部環境資料開放平臺 API Key</label>
+        <input type="text" id="k1" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+        <p>免費註冊後由信件寄送：<a href="https://data.moenv.gov.tw/api_term" target="_blank" rel="noopener">data.moenv.gov.tw/api_term</a>。提供全台空品測站 AQI 與各污染物濃度。</p>
+      </div>
+      <div class="field">
+        <label for="k2">中央氣象署開放資料授權碼</label>
+        <input type="text" id="k2" placeholder="CWA-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false">
+        <p>免費註冊後於會員中心取得：<a href="https://opendata.cwa.gov.tw" target="_blank" rel="noopener">opendata.cwa.gov.tw</a>。提供自動氣象站的溫度與相對濕度。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>警報門檻</h2>
+      <div class="row">
+        <div class="field"><label for="tAqi">AQI 超過</label><input type="number" id="tAqi" min="20" max="300" step="5"></div>
+        <div class="field"><label for="tPm">PM2.5 超過 (µg/m³)</label><input type="number" id="tPm" min="5" max="150" step="1"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="tHi">熱指數體感超過 (°C)</label><input type="number" id="tHi" min="26" max="50" step="1"></div>
+        <div class="field"><label for="tHum">相對濕度低於 (%)</label><input type="number" id="tHum" min="10" max="60" step="1"></div>
+      </div>
+      <div class="field">
+        <label for="grp">健康族群</label>
+        <select id="grp">
+          <option value="general">一般成人</option>
+          <option value="resp">呼吸道敏感（氣喘、慢性阻塞性肺病）</option>
+          <option value="cardio">心血管疾病</option>
+          <option value="elder">長者</option>
+          <option value="child">兒童</option>
+          <option value="preg">孕期</option>
+        </select>
+        <p>選擇敏感族群後，警報門檻會自動下修一級，建議文字也會跟著調整。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>更新與通知</h2>
+      <div class="field">
+        <label for="freq">自動更新間隔</label>
+        <select id="freq">
+          <option value="5">每 5 分鐘</option><option value="10">每 10 分鐘</option>
+          <option value="20">每 20 分鐘</option><option value="60">每 60 分鐘</option>
+        </select>
+        <p>空品資料每小時更新一次、氣象站每 10 分鐘一次，設得再密也不會更即時，只會多耗電。</p>
+      </div>
+      <label class="check"><input type="checkbox" id="notify"><span>觸發警報時發送系統通知</span></label>
+      <label class="check"><input type="checkbox" id="vibe"><span>觸發警報時震動</span></label>
+      <p class="note">網頁通知只在此頁面開著（含背景分頁）時才會發出。若要真正的離線推播，需要另外架設伺服器發送 Web Push。</p>
+      <div class="act"><button class="solid" id="save">儲存設定</button><button id="perm">開啟通知權限</button></div>
+    </section>
+
+    <section>
+      <h2>關於資料</h2>
+      <p class="note">
+        空氣品質：環境部環境資料開放平臺「空氣品質指標(AQI)」資料集（AQX_P_432）。<br>
+        氣象觀測：中央氣象署開放資料平臺「自動氣象站資料」（O-A0003-001）。<br>
+        熱指數採 Rothfusz 迴歸式由氣溫與相對濕度推算，屬於體感估計值，非官方發布之熱危害警示。<br>
+        本頁為個人參考工具，不能取代官方警報或醫療判斷。
+      </p>
+    </section>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------- storage with in-memory fallback ---------- */
+const mem = {};
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return k in mem ? mem[k] : null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+};
+
+const DEF = {k1:"",k2:"",tAqi:100,tPm:35,tHi:32,tHum:40,grp:"general",freq:"10",notify:true,vibe:true};
+let cfg = Object.assign({}, DEF, JSON.parse(store.get("aw.cfg")||"{}"));
+let log = JSON.parse(store.get("aw.log")||"[]");
+let pos = null, timer = null, lastAlert = {level:-1, at:0};
+
+/* ---------- AQI scale ---------- */
+const BANDS = [
+  {max:50,  name:"良好",             color:"#009966", text:"light"},
+  {max:100, name:"普通",             color:"#FFDE33", text:"light"},
+  {max:150, name:"對敏感族群不健康",  color:"#FF9933", text:"light"},
+  {max:200, name:"對所有族群不健康",  color:"#CC0033", text:"dark"},
+  {max:300, name:"非常不健康",        color:"#660099", text:"dark"},
+  {max:999, name:"危害",             color:"#7E0023", text:"dark"}
+];
+const band = a => BANDS[Math.min(BANDS.findIndex(b=>a<=b.max),5)] || BANDS[5];
+const bandIndex = a => Math.max(0, BANDS.findIndex(b=>a<=b.max));
+
+/* 熱指數分級（°C） */
+const HEAT = [
+  {max:27, name:"舒適",   color:"#009966"},
+  {max:32, name:"注意",   color:"#FFDE33"},
+  {max:41, name:"警戒",   color:"#FF9933"},
+  {max:54, name:"危險",   color:"#CC0033"},
+  {max:99, name:"極度危險",color:"#660099"}
+];
+const heatBand = h => HEAT[Math.max(0,HEAT.findIndex(b=>h<=b.max))] || HEAT[4];
+
+/* 敏感族群：門檻下修 */
+const SENS = {general:0, resp:1, cardio:1, elder:1, child:1, preg:1};
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const num = v => { const n = parseFloat(v); return (isNaN(n) || n <= -90) ? null : n; };
+const fmt = (v,d=0) => v===null||v===undefined ? "--" : v.toFixed(d);
+
+function haversine(a1,o1,a2,o2){
+  const R=6371, r=Math.PI/180;
+  const dA=(a2-a1)*r, dO=(o2-o1)*r;
+  const x=Math.sin(dA/2)**2 + Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dO/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+
+/* Rothfusz heat index, °C in → °C out */
+function heatIndex(tc, rh){
+  if(tc===null||rh===null) return null;
+  const T = tc*9/5+32, R = rh;
+  let hi = 0.5*(T + 61 + (T-68)*1.2 + R*0.094);
+  if((hi+T)/2 >= 80){
+    hi = -42.379 + 2.04901523*T + 10.14333127*R - 0.22475541*T*R
+       - 0.00683783*T*T - 0.05481717*R*R + 0.00122874*T*T*R
+       + 0.00085282*T*R*R - 0.00000199*T*T*R*R;
+    if(R < 13 && T >= 80 && T <= 112) hi -= ((13-R)/4)*Math.sqrt((17-Math.abs(T-95))/17);
+    else if(R > 85 && T >= 80 && T <= 87) hi += ((R-85)/10)*((87-T)/5);
+  }
+  return (hi-32)*5/9;
+}
+
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("on"), 2600);
+}
+
+/* ---------- data fetch ---------- */
+async function getAir(lat, lon){
+  const url = `https://data.moenv.gov.tw/api/v2/aqx_p_432?api_key=${encodeURIComponent(cfg.k1)}&limit=1000&format=JSON`;
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`環境部 API 回應 ${r.status}，請確認金鑰是否正確`);
+  const j = await r.json();
+  const rows = j.records || j.result?.records || [];
+  if(!rows.length) throw new Error("環境部 API 沒有回傳測站資料");
+
+  let best = null, bestD = Infinity;
+  for(const raw of rows){
+    const s = {}; for(const k in raw) s[k.toLowerCase()] = raw[k];
+    const la = num(s.latitude), lo = num(s.longitude);
+    if(la===null || lo===null) continue;
+    const d = haversine(lat, lon, la, lo);
+    if(d < bestD){ bestD = d; best = s; }
+  }
+  if(!best) throw new Error("找不到具座標的空品測站");
+  return {
+    site: best.sitename, county: best.county, dist: bestD,
+    aqi: num(best.aqi), status: best.status, pollutant: best.pollutant || "",
+    time: best.publishtime || best.datacreationdate || "",
+    pm25: num(best["pm2.5"] ?? best.pm25), pm25avg: num(best["pm2.5_avg"] ?? best.pm25_avg),
+    pm10: num(best.pm10), o3: num(best.o3_8hr ?? best.o3),
+    no2: num(best.no2), so2: num(best.so2), co: num(best.co_8hr ?? best.co)
+  };
+}
+
+async function getWeather(lat, lon){
+  const url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${encodeURIComponent(cfg.k2)}`;
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`氣象署 API 回應 ${r.status}，請確認授權碼是否正確`);
+  const j = await r.json();
+  const rec = j.records || {};
+  const list = rec.Station || rec.location || [];
+  let best = null, bestD = Infinity;
+
+  for(const st of list){
+    let la=null, lo=null, t=null, h=null, name=null, obs=null;
+    if(st.GeoInfo){                                   // 新版結構
+      const c = (st.GeoInfo.Coordinates||[]).find(x=>x.CoordinateName==="WGS84") || st.GeoInfo.Coordinates?.[0];
+      la = num(c?.StationLatitude); lo = num(c?.StationLongitude);
+      t = num(st.WeatherElement?.AirTemperature);
+      h = num(st.WeatherElement?.RelativeHumidity);
+      name = st.StationName; obs = st.ObsTime?.DateTime;
+    } else {                                          // 舊版結構
+      la = num(st.lat); lo = num(st.lon); name = st.locationName; obs = st.time?.obsTime;
+      for(const e of st.weatherElement||[]){
+        if(e.elementName==="TEMP") t = num(e.elementValue);
+        if(e.elementName==="HUMD") h = num(e.elementValue);
+      }
+      if(h!==null && h<=1) h = h*100;                 // 舊版以比值表示
+    }
+    if(la===null||lo===null||t===null) continue;
+    const d = haversine(lat, lon, la, lo);
+    if(d < bestD){ bestD = d; best = {name, t, h, obs, dist:d}; }
+  }
+  if(!best) throw new Error("找不到可用的氣象測站");
+  return best;
+}
+
+/* ---------- render ---------- */
+function render(air, wx){
+  const b = band(air.aqi ?? 0), bi = bandIndex(air.aqi ?? 0);
+  const flag = $("#flag");
+  flag.style.background = b.color;
+  flag.className = "flag " + b.text;
+  $("#lv").textContent = air.status || b.name;
+  $("#aqi").innerHTML = (air.aqi===null?"--":Math.round(air.aqi)) + "<small>AQI</small>";
+  $("#who").innerHTML = `<b>${air.site}測站</b>　直線 ${air.dist.toFixed(1)} 公里`
+    + (air.pollutant ? `　主要污染物 ${air.pollutant}` : "")
+    + `<br>${air.county}　發布於 ${air.time}`;
+
+  $("#scale").innerHTML = BANDS.map((x,i)=>
+    `<i style="background:${x.color}" class="${i===bi?'on':''}"></i>`).join("");
+
+  const hi = heatIndex(wx?.t ?? null, wx?.h ?? null);
+  const hb = hi===null ? null : heatBand(hi);
+  $("#temp").innerHTML = fmt(wx?.t,1)+"<span>°C</span>";
+  $("#hum").innerHTML  = fmt(wx?.h,0)+"<span>%</span>";
+  $("#hi").innerHTML   = fmt(hi,1)+"<span>°C</span>";
+  $("#tbar").style.background = hb ? hb.color : "var(--line)";
+  $("#hbar").style.background = wx?.h===null||wx?.h===undefined ? "var(--line)"
+    : (wx.h < cfg.tHum ? "#FF9933" : wx.h > 85 ? "#660099" : "#009966");
+  $("#ibar").style.background = hb ? hb.color : "var(--line)";
+
+  $("#poll").innerHTML = [
+    ["PM2.5", air.pm25, "µg/m³", 35],
+    ["PM10",  air.pm10, "µg/m³", 75],
+    ["臭氧 O₃", air.o3, "ppb", 60],
+    ["二氧化氮 NO₂", air.no2, "ppb", 100],
+    ["二氧化硫 SO₂", air.so2, "ppb", 75],
+    ["一氧化碳 CO", air.co, "ppm", 9]
+  ].map(([n,v,u,ref])=>{
+    const pct = v===null ? 0 : Math.min(100, v/ref*100);
+    const col = pct>100?"#CC0033":pct>66?"#FF9933":pct>33?"#FFDE33":"#009966";
+    return `<div class="cell"><div class="n">${n}</div><div class="d">${fmt(v, v!==null&&v<10?1:0)}<u>${u}</u></div>
+      <div class="g"><i style="width:${pct}%;background:${col}"></i></div></div>`;
+  }).join("");
+
+  $("#src").textContent = wx
+    ? `溫濕度取自 ${wx.name}氣象站（${wx.dist.toFixed(1)} 公里），觀測時間 ${wx.obs||"—"}。橫條以空氣品質標準值為滿格參考。`
+    : "溫濕度資料未取得。橫條以空氣品質標準值為滿格參考。";
+
+  $("#advice").innerHTML = advise(air, wx, hi).map(([c,t])=>
+    `<li style="--dot:${c}">${t}</li>`).join("");
+
+  $("#stamp").textContent = new Date().toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) + " 更新";
+  document.querySelector('meta[name=theme-color]').content = b.color;
+}
+
+function advise(air, wx, hi){
+  const out = [], shift = SENS[cfg.grp]||0;
+  const lv = Math.min(5, bandIndex(air.aqi ?? 0) + shift);
+  const sensitive = cfg.grp !== "general";
+
+  if(lv <= 0) out.push(["#009966","空氣品質良好，適合戶外活動與開窗通風。"]);
+  else if(lv === 1) out.push(["#FFDE33","空氣品質普通。極少數敏感者若有不適，減少長時間劇烈運動即可。"]);
+  else if(lv === 2) out.push(["#FF9933", sensitive
+      ? "以你設定的族群而言，此刻應減少戶外劇烈運動，外出建議配戴口罩並備妥常用藥物。"
+      : "一般人可正常活動；有心肺疾病、長者與孩童應減少戶外劇烈運動。"]);
+  else if(lv === 3) out.push(["#CC0033","減少戶外活動與劇烈運動，關閉門窗並使用空氣清淨機；外出配戴可過濾細懸浮微粒的口罩。"]);
+  else out.push(["#660099","避免所有戶外活動，緊閉門窗。若出現胸悶、呼吸困難、心悸，儘速就醫。"]);
+
+  if(air.pm25 !== null && air.pm25 >= cfg.tPm)
+    out.push(["#CC0033",`PM2.5 已達 ${air.pm25.toFixed(0)} µg/m³，超過你設定的 ${cfg.tPm}。細懸浮微粒可深入肺泡，室內請開啟循環與過濾。`]);
+
+  if(hi !== null){
+    const hb = heatBand(hi);
+    if(hi >= 41) out.push(["#CC0033","熱指數已進入危險區間，中暑與熱衰竭風險高。避免正午外出，每 15 至 20 分鐘補水一次。"]);
+    else if(hi >= cfg.tHi) out.push([hb.color,`體感 ${hi.toFixed(0)} °C，高於你設定的 ${cfg.tHi} °C。戶外工作或運動請縮短時段並主動補充水分與電解質。`]);
+  }
+  if(wx?.h !== null && wx?.h !== undefined){
+    if(wx.h < cfg.tHum) out.push(["#FF9933",`相對濕度僅 ${wx.h.toFixed(0)}%，空氣乾燥會加重呼吸道與眼睛不適，建議加濕並增加飲水。`]);
+    else if(wx.h > 88) out.push(["#660099",`相對濕度 ${wx.h.toFixed(0)}%，悶濕環境利於黴菌與塵蟎，且會抑制排汗散熱。`]);
+  }
+  if(air.aqi !== null && air.aqi <= 50 && hi !== null && hi < 30 && out.length === 1)
+    out.push(["#009966","此刻空氣與溫濕度都在舒適範圍，是外出走動的好時機。"]);
+  return out;
+}
+
+/* ---------- alerting ---------- */
+function evaluate(air, wx, hi){
+  const shift = SENS[cfg.grp]||0;
+  const aqiLv = Math.min(5, bandIndex(air.aqi ?? 0) + shift);
+  const reasons = [];
+  let level = 0;
+
+  if(air.aqi !== null && air.aqi >= cfg.tAqi){ level = Math.max(level, aqiLv); reasons.push(`AQI ${Math.round(air.aqi)}`); }
+  if(air.pm25 !== null && air.pm25 >= cfg.tPm){ level = Math.max(level, 2); reasons.push(`PM2.5 ${air.pm25.toFixed(0)}`); }
+  if(hi !== null && hi >= cfg.tHi){ level = Math.max(level, hi>=41?3:2); reasons.push(`體感 ${hi.toFixed(0)}°C`); }
+  if(wx?.h !== null && wx?.h !== undefined && wx.h < cfg.tHum){ level = Math.max(level, 1); reasons.push(`濕度 ${wx.h.toFixed(0)}%`); }
+  return {level, reasons};
+}
+
+function fireAlert(air, res){
+  const el = $("#alert");
+  if(res.level === 0){ el.classList.remove("on"); lastAlert = {level:0, at:Date.now()}; return; }
+
+  const b = BANDS[Math.min(res.level,5)];
+  el.style.background = b.color;
+  el.style.color = b.text === "dark" ? "#fff" : "#17242B";
+  el.innerHTML = `<button onclick="this.parentNode.classList.remove('on')">關閉</button>`
+    + `${air.site}：${res.reasons.join("、")}　已超過你設定的門檻`;
+  el.classList.add("on");
+
+  /* 只在等級上升，或同級別超過 30 分鐘後，才重複發送通知，避免反覆打擾 */
+  const escalated = res.level > lastAlert.level;
+  const stale = Date.now() - lastAlert.at > 30*60*1000;
+  if(escalated || stale){
+    if(cfg.vibe && navigator.vibrate) navigator.vibrate(escalated ? [200,80,200] : 160);
+    if(cfg.notify && "Notification" in window && Notification.permission === "granted"){
+      new Notification("此刻空氣：環境警報", {
+        body: `${air.site}　${res.reasons.join("、")}`,
+        icon: "icon-192.png", tag: "airwatch", renotify: escalated
+      });
+    }
+    lastAlert = {level:res.level, at:Date.now()};
+  }
+}
+
+/* ---------- log ---------- */
+function pushLog(air, wx, hi){
+  log.unshift({
+    t: new Date().toISOString(), site: air.site, aqi: air.aqi, pm25: air.pm25,
+    temp: wx?.t ?? null, hum: wx?.h ?? null, hi: hi,
+    lat: pos.lat.toFixed(5), lon: pos.lon.toFixed(5)
+  });
+  log = log.slice(0, 300);
+  store.set("aw.log", JSON.stringify(log));
+  drawLog();
+}
+function drawLog(){
+  const tb = $("#log");
+  if(!log.length){ tb.innerHTML = `<tr><td colspan="5" style="color:var(--muted);border-top:none">尚無紀錄</td></tr>`; return; }
+  tb.innerHTML = log.slice(0,12).map(r=>{
+    const c = band(r.aqi ?? 0).color;
+    const d = new Date(r.t);
+    return `<tr><td>${d.toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td>
+      <td>${r.site}</td><td><span class="pip" style="background:${c}"></span>${r.aqi??"--"}</td>
+      <td>${r.pm25??"--"}</td><td>${r.temp===null?"--":r.temp.toFixed(1)}° / ${r.hum===null?"--":Math.round(r.hum)}%</td></tr>`;
+  }).join("");
+}
+
+/* ---------- main cycle ---------- */
+async function tick(){
+  if(!cfg.k1){ toast("請先在設定填入環境部 API 金鑰"); openPanel(); return; }
+  if(!pos){ toast("尚未取得定位"); return; }
+  const btn = $("#refresh"); btn.style.opacity = .4;
+  try{
+    const air = await getAir(pos.lat, pos.lon);
+    let wx = null;
+    if(cfg.k2){ try{ wx = await getWeather(pos.lat, pos.lon); }catch(e){ toast(e.message); } }
+    const hi = heatIndex(wx?.t ?? null, wx?.h ?? null);
+    render(air, wx);
+    fireAlert(air, evaluate(air, wx, hi));
+    pushLog(air, wx, hi);
+    store.set("aw.last", JSON.stringify({air, wx, at:Date.now()}));
+  }catch(e){
+    toast(e.message.includes("Failed to fetch") ? "連線失敗，請確認網路或金鑰" : e.message);
+  }finally{ btn.style.opacity = 1; }
+}
+
+function schedule(){
+  clearInterval(timer);
+  timer = setInterval(tick, parseInt(cfg.freq,10)*60*1000);
+}
+
+function locate(){
+  if(!navigator.geolocation){ toast("此裝置不支援定位"); return; }
+  navigator.geolocation.watchPosition(
+    p => {
+      const moved = !pos || haversine(pos.lat,pos.lon,p.coords.latitude,p.coords.longitude) > 1.5;
+      pos = {lat:p.coords.latitude, lon:p.coords.longitude};
+      if(moved) tick();                       // 移動超過 1.5 公里才重抓，避免耗流量
+    },
+    err => toast("定位失敗：" + err.message),
+    {enableHighAccuracy:true, maximumAge:120000, timeout:20000}
+  );
+}
+
+/* ---------- settings UI ---------- */
+function loadForm(){
+  ["k1","k2","tAqi","tPm","tHi","tHum","grp","freq"].forEach(k => $("#"+k).value = cfg[k]);
+  $("#notify").checked = cfg.notify; $("#vibe").checked = cfg.vibe;
+}
+function openPanel(){ loadForm(); $("#panel").classList.add("open"); }
+
+$("#gear").onclick = openPanel;
+$("#close").onclick = ()=> $("#panel").classList.remove("open");
+$("#refresh").onclick = tick;
+$("#save").onclick = ()=>{
+  ["k1","k2","grp","freq"].forEach(k => cfg[k] = $("#"+k).value.trim());
+  ["tAqi","tPm","tHi","tHum"].forEach(k => cfg[k] = parseFloat($("#"+k).value) || DEF[k]);
+  cfg.notify = $("#notify").checked; cfg.vibe = $("#vibe").checked;
+  store.set("aw.cfg", JSON.stringify(cfg));
+  $("#panel").classList.remove("open");
+  toast("設定已儲存");
+  schedule(); tick();
+};
+$("#perm").onclick = async ()=>{
+  if(!("Notification" in window)) return toast("此瀏覽器不支援通知");
+  const p = await Notification.requestPermission();
+  toast(p === "granted" ? "通知已開啟" : "通知未開啟");
+};
+$("#csv").onclick = ()=>{
+  if(!log.length) return toast("沒有可匯出的紀錄");
+  const head = "時間,測站,緯度,經度,AQI,PM2.5,氣溫,相對濕度,熱指數\n";
+  const body = log.map(r=>[r.t,r.site,r.lat,r.lon,r.aqi??"",r.pm25??"",
+    r.temp??"",r.hum??"",r.hi===null?"":r.hi.toFixed(1)].join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF"+head+body], {type:"text/csv;charset=utf-8"}));
+  const a = document.createElement("a");
+  a.href = url; a.download = `exposure_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+$("#clear").onclick = ()=>{ log = []; store.set("aw.log","[]"); drawLog(); toast("紀錄已清除"); };
+
+/* ---------- boot ---------- */
+drawLog();
+const cached = JSON.parse(store.get("aw.last")||"null");
+if(cached && Date.now()-cached.at < 6*3600*1000){
+  render(cached.air, cached.wx);
+  $("#stamp").textContent = "離線快取";
+}
+if(!cfg.k1) setTimeout(openPanel, 400);
+locate();
+schedule();
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) tick(); });
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>

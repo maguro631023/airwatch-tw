@@ -1,0 +1,16 @@
+{
+  "name": "此刻空氣｜即時空污與溫濕度警報",
+  "short_name": "此刻空氣",
+  "description": "以 GPS 定位比對環境部空品測站與中央氣象署氣象站，提供即時空污與溫濕度警報。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E7EDEF",
+  "theme_color": "#17242B",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
