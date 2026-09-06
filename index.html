@@ -107,6 +107,12 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 .check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:15px}
 .check input{width:20px;height:20px;accent-color:var(--ink)}
 .note{font-size:12.5px;color:var(--muted);line-height:1.6}
+.diag{display:none;background:#fff;border-left:4px solid #CC0033;padding:13px 15px;
+  margin:14px 0;border-radius:10px;font-size:13.5px;line-height:1.6}
+.diag.ok{border-left-color:#009966}
+.diag.on{display:block}
+.diag b{display:block;margin-bottom:3px}
+.diag code{font-size:12px;color:var(--muted);word-break:break-all}
 .qrtabs{display:flex;gap:6px;margin-bottom:14px}
 .qtab{flex:1;padding:9px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff}
 .qtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -142,6 +148,8 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 </div>
 
 <div class="wrap">
+
+  <p class="diag" id="diag"></p>
 
   <div class="climate">
     <div><b class="v" id="temp">--<span>°C</span></b><span class="k">氣溫</span><div class="heatbar" id="tbar"></div></div>
@@ -325,6 +333,13 @@ function heatIndex(tc, rh){
     else if(R > 85 && T >= 80 && T <= 87) hi += ((R-85)/10)*((87-T)/5);
   }
   return (hi-32)*5/9;
+}
+
+function diag(title, detail, ok){
+  const d = $("#diag");
+  if(!title){ d.classList.remove("on"); return; }
+  d.className = "diag on" + (ok ? " ok" : "");
+  d.innerHTML = `<b>${title}</b>` + (detail ? `<code>${detail}</code>` : "");
 }
 
 function toast(msg){
@@ -544,14 +559,19 @@ async function tick(){
   try{
     const air = await getAir(pos.lat, pos.lon);
     let wx = null;
-    if(cfg.k2){ try{ wx = await getWeather(pos.lat, pos.lon); }catch(e){ toast(e.message); } }
+    if(cfg.k2){ try{ wx = await getWeather(pos.lat, pos.lon); }catch(e){ diag("溫濕度資料取得失敗（空品仍會顯示）", e.message); } }
     const hi = heatIndex(wx?.t ?? null, wx?.h ?? null);
+    diag(null);
     render(air, wx);
     fireAlert(air, evaluate(air, wx, hi));
     pushLog(air, wx, hi);
     store.set("aw.last", JSON.stringify({air, wx, at:Date.now()}));
   }catch(e){
-    toast(e.message.includes("Failed to fetch") ? "連線失敗，請確認網路或金鑰" : e.message);
+    const net = e.message.includes("Failed to fetch") || e.message.includes("Load failed");
+    diag(net ? "空品資料連線失敗" : "空品資料取得失敗",
+         net ? "瀏覽器擋下了跨來源請求，或網路不通。請用 Safari 直接開一次 API 網址測試；若網址能開但這裡不行，就是 CORS 問題，需要改用代理。"
+             : e.message);
+    toast("資料取得失敗，詳見上方訊息");
   }finally{ btn.style.opacity = 1; }
 }
 
@@ -560,17 +580,33 @@ function schedule(){
   timer = setInterval(tick, parseInt(cfg.freq,10)*60*1000);
 }
 
+const GEO_ERR = {
+  1: ["定位權限被拒絕",
+      "Safari：點網址列左邊的圖示 → 網站設定 → 位置 → 允許，然後重新整理。若已加到主畫面，請改在 設定 → App → 此刻空氣 中開啟位置權限。"],
+  2: ["取得不到位置",
+      "裝置回報位置無法使用。請確認 設定 → 隱私權與安全性 → 定位服務 已開啟，且 Safari 設為「使用 App 期間」。"],
+  3: ["定位逾時",
+      "20 秒內沒有取得座標。室內收訊不良時常見，移到窗邊或戶外後按右上角的重新整理。"]
+};
+
+function onFix(p){
+  const moved = !pos || haversine(pos.lat, pos.lon, p.coords.latitude, p.coords.longitude) > 1.5;
+  pos = {lat:p.coords.latitude, lon:p.coords.longitude};
+  if($("#lv").textContent === "等待定位")
+    $("#lv").textContent = "定位完成，讀取資料中";
+  if(moved) tick();                       // 移動超過 1.5 公里才重抓，避免耗流量
+}
+function onGeoErr(err){
+  const [t, d] = GEO_ERR[err.code] || ["定位失敗", err.message];
+  diag(t, d);
+}
+
 function locate(){
-  if(!navigator.geolocation){ toast("此裝置不支援定位"); return; }
-  navigator.geolocation.watchPosition(
-    p => {
-      const moved = !pos || haversine(pos.lat,pos.lon,p.coords.latitude,p.coords.longitude) > 1.5;
-      pos = {lat:p.coords.latitude, lon:p.coords.longitude};
-      if(moved) tick();                       // 移動超過 1.5 公里才重抓，避免耗流量
-    },
-    err => toast("定位失敗：" + err.message),
-    {enableHighAccuracy:true, maximumAge:120000, timeout:20000}
-  );
+  if(!navigator.geolocation){ diag("此裝置或瀏覽器不支援定位", "請改用 Safari 或 Chrome 開啟，且網址必須是 https。"); return; }
+  if(!isSecureContext){ diag("必須使用 HTTPS", "瀏覽器只在安全連線下提供定位。請確認網址開頭是 https://"); return; }
+  const opt = {enableHighAccuracy:true, maximumAge:120000, timeout:20000};
+  navigator.geolocation.getCurrentPosition(onFix, onGeoErr, opt);   // 先要一次，加快首次定位
+  navigator.geolocation.watchPosition(onFix, onGeoErr, opt);
 }
 
 /* ---------- settings UI ---------- */
@@ -582,7 +618,10 @@ function openPanel(){ loadForm(); renderQR(); $("#panel").classList.add("open");
 
 $("#gear").onclick = openPanel;
 $("#close").onclick = ()=> $("#panel").classList.remove("open");
-$("#refresh").onclick = tick;
+$("#refresh").onclick = () => {
+  if(!pos){ toast("重新定位中"); locate(); return; }
+  tick();
+};
 $("#save").onclick = ()=>{
   ["k1","k2","grp","freq"].forEach(k => cfg[k] = $("#"+k).value.trim());
   ["tAqi","tPm","tHi","tHum"].forEach(k => cfg[k] = parseFloat($("#"+k).value) || DEF[k]);
