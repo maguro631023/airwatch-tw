@@ -107,6 +107,11 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 .check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:15px}
 .check input{width:20px;height:20px;accent-color:var(--ink)}
 .note{font-size:12.5px;color:var(--muted);line-height:1.6}
+.qrtabs{display:flex;gap:6px;margin-bottom:14px}
+.qtab{flex:1;padding:9px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff}
+.qtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+#qrbox{display:grid;place-items:center;padding:16px;background:#fff;border:1px solid var(--line);border-radius:12px}
+#qrbox svg{width:min(240px,60vw);height:auto;display:block;image-rendering:pixelated}
 #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--ink);color:#fff;
   padding:11px 18px;border-radius:22px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:60}
 #toast.on{opacity:1;transform:translate(-50%,0)}
@@ -225,6 +230,21 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
     </section>
 
     <section>
+      <h2>QR Code</h2>
+      <div class="qrtabs">
+        <button class="qtab on" data-mode="url">只有網址</button>
+        <button class="qtab" data-mode="full">含金鑰與設定</button>
+      </div>
+      <div id="qrbox"></div>
+      <p class="note" id="qrnote" style="margin-top:12px"></p>
+      <div class="act">
+        <button id="qrpng">下載 PNG</button>
+        <button id="qrcopy">複製連結</button>
+        <button id="qrreset">重設為預設金鑰</button>
+      </div>
+    </section>
+
+    <section>
       <h2>關於資料</h2>
       <p class="note">
         空氣品質：環境部環境資料開放平臺「空氣品質指標(AQI)」資料集（AQX_P_432）。<br>
@@ -248,7 +268,9 @@ const store = {
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
 };
 
-const DEF = {k1:"",k2:"",tAqi:100,tPm:35,tHi:32,tHum:40,grp:"general",freq:"10",notify:true,vibe:true};
+const KEY1 = "b6b0eef7-7b20-43da-b18a-c88162198a27";
+const KEY2 = "CWA-A91D2CC8-7755-4DDC-BD41-32734A5470CB";
+const DEF = {k1:KEY1, k2:KEY2,tAqi:100,tPm:35,tHi:32,tHum:40,grp:"general",freq:"10",notify:true,vibe:true};
 let cfg = Object.assign({}, DEF, JSON.parse(store.get("aw.cfg")||"{}"));
 let log = JSON.parse(store.get("aw.log")||"[]");
 let pos = null, timer = null, lastAlert = {level:-1, at:0};
@@ -556,7 +578,7 @@ function loadForm(){
   ["k1","k2","tAqi","tPm","tHi","tHum","grp","freq"].forEach(k => $("#"+k).value = cfg[k]);
   $("#notify").checked = cfg.notify; $("#vibe").checked = cfg.vibe;
 }
-function openPanel(){ loadForm(); $("#panel").classList.add("open"); }
+function openPanel(){ loadForm(); renderQR(); $("#panel").classList.add("open"); }
 
 $("#gear").onclick = openPanel;
 $("#close").onclick = ()=> $("#panel").classList.remove("open");
@@ -568,6 +590,7 @@ $("#save").onclick = ()=>{
   store.set("aw.cfg", JSON.stringify(cfg));
   $("#panel").classList.remove("open");
   toast("設定已儲存");
+  renderQR();
   schedule(); tick();
 };
 $("#perm").onclick = async ()=>{
@@ -587,7 +610,317 @@ $("#csv").onclick = ()=>{
 };
 $("#clear").onclick = ()=>{ log = []; store.set("aw.log","[]"); drawLog(); toast("紀錄已清除"); };
 
+/* 極簡 QR 產生器：byte mode、版本 1–10、EC 等級 M / L
+   回傳 boolean[][] 模組矩陣（true = 深色） */
+function qrMatrix(text, ecName){
+  const EC = {L:0, M:1};
+  const ec = EC[ecName];
+
+  // [ecPerBlock, g1blocks, g1words, g2blocks, g2words]
+  const RS = {
+    L:[[7,1,19,0,0],[10,1,34,0,0],[15,1,55,0,0],[20,1,80,0,0],[26,1,108,0,0],
+       [18,2,68,0,0],[20,2,78,0,0],[24,2,97,0,0],[30,2,116,0,0],[18,2,68,2,69]],
+    M:[[10,1,16,0,0],[16,1,28,0,0],[26,1,44,0,0],[18,2,32,0,0],[24,2,43,0,0],
+       [16,4,27,0,0],[18,4,31,0,0],[22,2,38,2,39],[22,3,36,2,37],[26,4,43,1,44]]
+  };
+  const CAP = {
+    L:[17,32,53,78,106,134,154,192,230,271],
+    M:[14,26,42,62,84,106,122,152,180,213]
+  };
+  const ALIGN = [[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+
+  const bytes = new TextEncoder().encode(text);
+
+  let ver = -1;
+  for(let v = 0; v < 10; v++) if(bytes.length <= CAP[ecName][v]){ ver = v + 1; break; }
+  if(ver < 0) throw new Error("內容過長，超過版本 10 容量");
+
+  const [ecLen, g1n, g1w, g2n, g2w] = RS[ecName][ver-1];
+  const totalData = g1n*g1w + g2n*g2w;
+
+  /* ---- 1. 位元串 ---- */
+  const bits = [];
+  const put = (val, len) => { for(let i = len-1; i >= 0; i--) bits.push((val >> i) & 1); };
+  put(4, 4);                                   // byte mode
+  put(bytes.length, ver <= 9 ? 8 : 16);
+  for(const b of bytes) put(b, 8);
+  for(let i = 0; i < 4 && bits.length < totalData*8; i++) bits.push(0);   // terminator
+  while(bits.length % 8) bits.push(0);
+  const data = [];
+  for(let i = 0; i < bits.length; i += 8){
+    let b = 0; for(let j = 0; j < 8; j++) b = (b << 1) | bits[i+j];
+    data.push(b);
+  }
+  const PAD = [0xEC, 0x11];
+  for(let i = 0; data.length < totalData; i++) data.push(PAD[i % 2]);
+
+  /* ---- 2. Reed-Solomon ---- */
+  const EXP = new Array(512), LOG = new Array(256);
+  for(let i = 0, x = 1; i < 255; i++){
+    EXP[i] = x; LOG[x] = i;
+    x <<= 1; if(x & 0x100) x ^= 0x11D;
+  }
+  for(let i = 255; i < 512; i++) EXP[i] = EXP[i-255];
+  const mul = (a,b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  function genPoly(n){
+    let g = [1];
+    for(let i = 0; i < n; i++){
+      const ng = new Array(g.length + 1).fill(0);
+      for(let j = 0; j < g.length; j++){
+        ng[j] ^= mul(g[j], 1);
+        ng[j+1] ^= mul(g[j], EXP[i]);
+      }
+      g = ng;
+    }
+    return g;
+  }
+  function rsEncode(block, n){
+    const g = genPoly(n);
+    const res = block.concat(new Array(n).fill(0));
+    for(let i = 0; i < block.length; i++){
+      const f = res[i];
+      if(f === 0) continue;
+      for(let j = 1; j < g.length; j++) res[i+j] ^= mul(g[j], f);
+    }
+    return res.slice(block.length);
+  }
+
+  const dBlocks = [], eBlocks = [];
+  let p = 0;
+  for(let i = 0; i < g1n; i++){ const b = data.slice(p, p+g1w); p += g1w; dBlocks.push(b); eBlocks.push(rsEncode(b, ecLen)); }
+  for(let i = 0; i < g2n; i++){ const b = data.slice(p, p+g2w); p += g2w; dBlocks.push(b); eBlocks.push(rsEncode(b, ecLen)); }
+
+  /* ---- 3. 交錯 ---- */
+  const stream = [];
+  const maxD = Math.max(g1w, g2w);
+  for(let i = 0; i < maxD; i++) for(const b of dBlocks) if(i < b.length) stream.push(b[i]);
+  for(let i = 0; i < ecLen; i++) for(const b of eBlocks) stream.push(b[i]);
+
+  /* ---- 4. 矩陣骨架 ---- */
+  const size = ver*4 + 17;
+  const m = Array.from({length:size}, () => new Array(size).fill(null));
+  const set = (r,c,v) => { if(r>=0 && r<size && c>=0 && c<size) m[r][c] = v; };
+
+  function finder(r, c){
+    for(let i = -1; i <= 7; i++) for(let j = -1; j <= 7; j++){
+      if(r+i < 0 || r+i >= size || c+j < 0 || c+j >= size) continue;
+      const on = (i >= 0 && i <= 6 && (j === 0 || j === 6)) ||
+                 (j >= 0 && j <= 6 && (i === 0 || i === 6)) ||
+                 (i >= 2 && i <= 4 && j >= 2 && j <= 4);
+      set(r+i, c+j, on);
+    }
+  }
+  finder(0,0); finder(0,size-7); finder(size-7,0);
+
+  for(let i = 8; i < size-8; i++){ const v = i % 2 === 0; set(6,i,v); set(i,6,v); }
+
+  for(const a of ALIGN[ver-1]) for(const b of ALIGN[ver-1]){
+    if((a===6&&b===6) || (a===6&&b===size-7) || (a===size-7&&b===6)) continue;
+    for(let i = -2; i <= 2; i++) for(let j = -2; j <= 2; j++)
+      set(a+i, b+j, Math.max(Math.abs(i),Math.abs(j)) !== 1);
+  }
+
+  set(size-8, 8, true);                         // dark module
+
+  // 保留格式資訊區
+  for(let i = 0; i < 9; i++){ if(m[8][i]===null) set(8,i,false); if(m[i][8]===null) set(i,8,false); }
+  for(let i = 0; i < 8; i++){ if(m[8][size-1-i]===null) set(8,size-1-i,false); if(m[size-1-i][8]===null) set(size-1-i,8,false); }
+
+  if(ver >= 7){
+    let d = ver << 12, v = ver;
+    for(let i = 0; i < 6; i++) if((d >> (17-i)) & 1 || true){}   // 佔位，下面用 BCH 計算
+    d = ver << 12;
+    let rem = d;
+    for(let i = 17; i >= 12; i--) if((rem >> i) & 1) rem ^= 0x1F25 << (i-12);
+    const bitsV = (ver << 12) | rem;
+    for(let i = 0; i < 18; i++){
+      const b = ((bitsV >> i) & 1) === 1;
+      set(Math.floor(i/3), size-11 + i%3, b);
+      set(size-11 + i%3, Math.floor(i/3), b);
+    }
+  }
+
+  /* ---- 5. 資料填入（之字形） ---- */
+  const reserved = m.map(row => row.map(v => v !== null));
+  let bi = 0;
+  const bitAt = i => i < stream.length*8 ? (stream[i >> 3] >> (7 - (i & 7))) & 1 : 0;
+  let up = true;
+  for(let col = size-1; col > 0; col -= 2){
+    if(col === 6) col--;
+    for(let k = 0; k < size; k++){
+      const row = up ? size-1-k : k;
+      for(let c = 0; c < 2; c++){
+        const cc = col - c;
+        if(reserved[row][cc]) continue;
+        m[row][cc] = bitAt(bi++) === 1;
+      }
+    }
+    up = !up;
+  }
+
+  /* ---- 6. 遮罩選擇 ---- */
+  const MASK = [
+    (r,c)=>(r+c)%2===0, (r,c)=>r%2===0, (r,c)=>c%3===0, (r,c)=>(r+c)%3===0,
+    (r,c)=>(Math.floor(r/2)+Math.floor(c/3))%2===0, (r,c)=>(r*c)%2+(r*c)%3===0,
+    (r,c)=>((r*c)%2+(r*c)%3)%2===0, (r,c)=>((r+c)%2+(r*c)%3)%2===0
+  ];
+
+  function penalty(g){
+    let s = 0;
+    // 規則 1：同色連續
+    for(let i = 0; i < size; i++){
+      for(const line of [g[i], g.map(r=>r[i])]){
+        let run = 1;
+        for(let j = 1; j < size; j++){
+          if(line[j] === line[j-1]) run++;
+          else { if(run >= 5) s += run - 2; run = 1; }
+        }
+        if(run >= 5) s += run - 2;
+      }
+    }
+    // 規則 2：2x2 同色
+    for(let r = 0; r < size-1; r++) for(let c = 0; c < size-1; c++)
+      if(g[r][c] === g[r][c+1] && g[r][c] === g[r+1][c] && g[r][c] === g[r+1][c+1]) s += 3;
+    // 規則 3：1011101 型樣式
+    const pat1 = [true,false,true,true,true,false,true,false,false,false,false];
+    const pat2 = [false,false,false,false,true,false,true,true,true,false,true];
+    for(let i = 0; i < size; i++){
+      const rows = g[i], cols = g.map(r=>r[i]);
+      for(const line of [rows, cols])
+        for(let j = 0; j + 11 <= size; j++){
+          let a = true, b = true;
+          for(let k = 0; k < 11; k++){ if(line[j+k] !== pat1[k]) a = false; if(line[j+k] !== pat2[k]) b = false; }
+          if(a) s += 40; if(b) s += 40;
+        }
+    }
+    // 規則 4：深色比例
+    let dark = 0;
+    for(const row of g) for(const v of row) if(v) dark++;
+    s += Math.floor(Math.abs(dark*100/(size*size) - 50)/5)*10;
+    return s;
+  }
+
+  let bestG = null, bestMask = 0, bestS = Infinity;
+  for(let msk = 0; msk < 8; msk++){
+    const g = m.map(r => r.slice());
+    for(let r = 0; r < size; r++) for(let c = 0; c < size; c++)
+      if(!reserved[r][c] && MASK[msk](r,c)) g[r][c] = !g[r][c];
+
+    // 格式資訊
+    const ecBits = ec === 0 ? 1 : 0;              // L=01, M=00
+    let fmt = (ecBits << 3) | msk;
+    let rem = fmt << 10;
+    for(let i = 14; i >= 10; i--) if((rem >> i) & 1) rem ^= 0x537 << (i-10);
+    const f = ((fmt << 10) | rem) ^ 0x5412;
+    for(let i = 0; i < 15; i++){
+      const b = ((f >> i) & 1) === 1;
+      if(i < 6) g[i][8] = b;
+      else if(i < 8) g[i+1][8] = b;
+      else if(i === 8) g[8][7] = b;
+      else g[8][14-i] = b;
+
+      if(i < 8) g[8][size-1-i] = b;
+      else g[size-15+i][8] = b;
+    }
+    g[size-8][8] = true;
+
+    const s = penalty(g);
+    if(s < bestS){ bestS = s; bestG = g; bestMask = msk; }
+  }
+  return bestG;
+}
+
+/* ---------- QR 介面 ---------- */
+let qrMode = "url";
+
+function appBase(){
+  const u = location.origin + location.pathname;
+  return u.startsWith("http") ? u : "https://maguro631023.github.io/airwatch-tw/";
+}
+function qrPayload(){
+  if(qrMode === "url") return appBase();
+  const q = new URLSearchParams();
+  if(cfg.k1) q.set("k", cfg.k1);
+  if(cfg.k2) q.set("c", cfg.k2);
+  q.set("g", cfg.grp); q.set("a", cfg.tAqi); q.set("p", cfg.tPm);
+  q.set("h", cfg.tHi); q.set("u", cfg.tHum); q.set("f", cfg.freq);
+  return appBase() + "#" + q.toString();
+}
+function renderQR(){
+  const text = qrPayload();
+  const box = $("#qrbox");
+  let g = null;
+  for(const ec of ["M","L"]){ try{ g = qrMatrix(text, ec); break; }catch(e){} }
+  if(!g){ box.innerHTML = '<p class="note">內容過長，無法產生 QR Code。</p>'; return; }
+
+  const n = g.length, q = 4, S = n + q*2;
+  let path = "";
+  for(let r = 0; r < n; r++) for(let c = 0; c < n; c++)
+    if(g[r][c]) path += `M${c+q} ${r+q}h1v1h-1z`;
+  box.innerHTML = `<svg viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="QR Code">`
+    + `<rect width="${S}" height="${S}" fill="#fff"/><path d="${path}" fill="#17242B"/></svg>`;
+
+  $("#qrnote").innerHTML = qrMode === "url"
+    ? `掃描後開啟 ${appBase()}　新裝置仍需自行填入金鑰。`
+    : `<b>這張含有你的 API 金鑰。</b>掃描後會自動帶入金鑰與門檻設定，適合換手機或多裝置同步，請勿公開分享。`;
+}
+function qrCanvas(scale){
+  const text = qrPayload();
+  let g = null;
+  for(const ec of ["M","L"]){ try{ g = qrMatrix(text, ec); break; }catch(e){} }
+  if(!g) return null;
+  const n = g.length, q = 4, S = (n + q*2) * scale;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = S;
+  const x = cv.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0,0,S,S);
+  x.fillStyle = "#17242B";
+  for(let r = 0; r < n; r++) for(let c = 0; c < n; c++)
+    if(g[r][c]) x.fillRect((c+q)*scale, (r+q)*scale, scale, scale);
+  return cv;
+}
+
+document.querySelectorAll(".qtab").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".qtab").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); qrMode = b.dataset.mode; renderQR();
+});
+$("#qrpng").onclick = () => {
+  const cv = qrCanvas(8);
+  if(!cv) return toast("無法產生圖檔");
+  const a = document.createElement("a");
+  a.href = cv.toDataURL("image/png");
+  a.download = qrMode === "url" ? "airwatch-qr.png" : "airwatch-qr-setup.png";
+  a.click();
+  toast("已下載");
+};
+$("#qrcopy").onclick = async () => {
+  try{ await navigator.clipboard.writeText(qrPayload()); toast("連結已複製"); }
+  catch(e){ toast("複製失敗，請長按 QR 下方網址"); }
+};
+$("#qrreset").onclick = () => {
+  $("#k1").value = KEY1; $("#k2").value = KEY2;
+  toast("已填回預設金鑰，記得按儲存");
+};
+
+/* ---------- 由 QR 連結帶入設定 ---------- */
+function applyHash(){
+  if(!location.hash || location.hash.length < 3) return false;
+  const q = new URLSearchParams(location.hash.slice(1));
+  if(!q.has("k") && !q.has("c")) return false;
+  const map = {k:"k1", c:"k2", g:"grp", a:"tAqi", p:"tPm", h:"tHi", u:"tHum", f:"freq"};
+  for(const [s2,k] of Object.entries(map)) if(q.has(s2)){
+    const v = q.get(s2);
+    cfg[k] = ["tAqi","tPm","tHi","tHum"].includes(k) ? (parseFloat(v) || DEF[k]) : v;
+  }
+  store.set("aw.cfg", JSON.stringify(cfg));
+  history.replaceState(null, "", location.pathname);   // 不把金鑰留在網址列
+  toast("已由 QR Code 帶入設定");
+  return true;
+}
+
 /* ---------- boot ---------- */
+applyHash();
 drawLog();
 const cached = JSON.parse(store.get("aw.last")||"null");
 if(cached && Date.now()-cached.at < 6*3600*1000){
