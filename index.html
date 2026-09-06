@@ -107,6 +107,25 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 .check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:15px}
 .check input{width:20px;height:20px;accent-color:var(--ink)}
 .note{font-size:12.5px;color:var(--muted);line-height:1.6}
+.poll .cell .lv{font-size:11px;font-weight:600;margin-top:4px}
+.help details{border-top:1px solid var(--line);padding:13px 0}
+.help details:first-of-type{border-top:none;padding-top:0}
+.help summary{font-size:15px;font-weight:600;cursor:pointer;list-style:none;
+  display:flex;justify-content:space-between;align-items:center}
+.help summary::-webkit-details-marker{display:none}
+.help summary::after{content:"＋";color:var(--muted);font-weight:400}
+.help details[open] summary::after{content:"−"}
+.help .body{padding-top:10px;font-size:13.5px;line-height:1.65;color:var(--ink)}
+.help .body p{margin:0 0 9px}
+.help .body p:last-child{margin-bottom:0}
+.help .body b{display:block;margin-top:10px}
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px}
+.scrollx table{min-width:520px;font-size:12px}
+.scrollx th,.scrollx td{padding:6px 8px;white-space:nowrap;text-align:right}
+.scrollx th:first-child,.scrollx td:first-child{text-align:left;white-space:nowrap}
+.scrollx thead th{border-bottom:1px solid var(--line)}
+.scrollx td{border-top:1px solid var(--line)}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 .diag{display:none;background:#fff;border-left:4px solid #CC0033;padding:13px 15px;
   margin:14px 0;border-radius:10px;font-size:13.5px;line-height:1.6}
 .diag.ok{border-left-color:#009966}
@@ -166,6 +185,92 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
     <h2>污染物濃度</h2>
     <div class="poll" id="poll"></div>
     <p class="note" id="src" style="margin-top:14px"></p>
+  </section>
+
+  <section class="help">
+    <h2>指標怎麼看</h2>
+
+    <details>
+      <summary>AQI 是什麼，怎麼算出來的</summary>
+      <div class="body">
+        <p>AQI 不是把六種污染物加總，而是<b style="display:inline">取最大值</b>。臭氧、PM2.5、PM10、一氧化碳、二氧化硫、二氧化氮各自換算成「副指標值」，其中最高的那一個就是 AQI，該項目即為主要污染物。</p>
+        <p>邏輯是污染物的健康機制不同、無法互相抵銷：PM2.5 很低，不會讓臭氧變得比較不傷肺。</p>
+        <div class="scrollx"><table>
+          <thead><tr><th>等級</th><th>健康影響</th><th>你該做什麼</th></tr></thead>
+          <tbody>
+          <tr><td><span class="swatch" style="background:#009966"></span>良好 0–50</td><td>污染程度低或無污染</td><td>正常戶外活動</td></tr>
+          <tr><td><span class="swatch" style="background:#FFDE33"></span>普通 51–100</td><td>對極少數敏感者輕微影響</td><td>正常戶外活動</td></tr>
+          <tr><td><span class="swatch" style="background:#FF9933"></span>敏感族群不健康 101–150</td><td>對一般大眾影響不明顯</td><td>有眼痛咳嗽喉痛就減少戶外活動</td></tr>
+          <tr><td><span class="swatch" style="background:#CC0033"></span>所有族群不健康 151–200</td><td>對所有人開始產生影響</td><td>減少體力消耗與戶外活動</td></tr>
+          <tr><td><span class="swatch" style="background:#660099"></span>非常不健康 201–300</td><td>健康警報：所有人都可能受較嚴重影響</td><td>減少戶外活動，室內為主</td></tr>
+          <tr><td><span class="swatch" style="background:#7E0023"></span>危害 301 以上</td><td>健康威脅達到緊急</td><td>避免外出，緊閉門窗，外出戴口罩</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>六種污染物的濃度分級</summary>
+      <div class="body">
+        <p>環境部自 114 年 1 月 1 日起實施新制門檻，比舊制嚴格。下表為即時副指標對照。</p>
+        <div class="scrollx"><table>
+          <thead><tr><th>AQI</th><th>PM2.5<br>µg/m³</th><th>PM10<br>µg/m³</th><th>O₃ 8hr<br>ppb</th><th>NO₂<br>ppb</th><th>SO₂<br>ppb</th><th>CO 8hr<br>ppm</th></tr></thead>
+          <tbody>
+          <tr><td><span class="swatch" style="background:#009966"></span>0–50</td><td>0–12.4</td><td>0–30</td><td>0–54</td><td>0–21</td><td>0–8</td><td>0–4.4</td></tr>
+          <tr><td><span class="swatch" style="background:#FFDE33"></span>51–100</td><td>12.5–30.4</td><td>31–75</td><td>55–70</td><td>22–100</td><td>9–65</td><td>4.5–9.4</td></tr>
+          <tr><td><span class="swatch" style="background:#FF9933"></span>101–150</td><td>30.5–50.4</td><td>76–190</td><td>71–85</td><td>101–360</td><td>66–160</td><td>9.5–12.4</td></tr>
+          <tr><td><span class="swatch" style="background:#CC0033"></span>151–200</td><td>50.5–125.4</td><td>191–354</td><td>86–105</td><td>361–649</td><td>161–304</td><td>12.5–15.4</td></tr>
+          <tr><td><span class="swatch" style="background:#660099"></span>201–300</td><td>125.5–225.4</td><td>355–424</td><td>106–200</td><td>650–1249</td><td>305–604</td><td>15.5–30.4</td></tr>
+          </tbody>
+        </table></div>
+        <p style="margin-top:10px">PM2.5 與 PM10 的即時值是「前 12 小時平均的一半 ＋ 前 4 小時平均的一半」，不是瞬間濃度；O₃ 與 CO 取最近連續 8 小時移動平均；SO₂ 與 NO₂ 才是即時值。所以 PM2.5 不會因為一輛公車經過就跳動。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>每種污染物代表什麼</summary>
+      <div class="body">
+        <b>PM2.5 細懸浮微粒</b>
+        <p>小於 2.5 微米，可直達肺泡並進入血液，健康證據最強的一項，與心肌梗塞、中風、肺癌相關。來自交通、營建、工業、境外污染與露天燃燒。</p>
+        <b>PM10 懸浮微粒</b>
+        <p>較粗，多卡在上呼吸道，引起咳嗽與鼻炎。PM10 遠高於 PM2.5 時通常是揚塵而非燃燒。</p>
+        <b>O₃ 臭氧</b>
+        <p>二次污染物，由氮氧化物與碳氫化合物經日照反應生成，夏季午後最高。強氧化劑，直接刺激肺部深處。臭氧高的日子天空常常看起來很藍——這是它最危險的地方。</p>
+        <b>NO₂ 二氧化氮</b>
+        <p>燃燒過程產生，都會區交通污染最直接的指標，同時是臭氧的前驅物。</p>
+        <b>SO₂ 二氧化硫</b>
+        <p>火山活動與燃料含硫燃燒。台灣自燃油含硫管制與電廠脫硫後已少見高值。</p>
+        <b>CO 一氧化碳</b>
+        <p>石化燃料不完全燃燒。與血紅素結合力遠高於氧氣，會剝奪血液攜氧能力。戶外幾乎測不到危險值，真正致命的場合在室內：熱水器、暖爐、密閉車庫。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>熱指數與濕度怎麼看</summary>
+      <div class="body">
+        <p>熱指數是由氣溫與相對濕度推算的體感溫度。濕度高時汗水難以蒸發，散熱效率下降，實際的熱危害遠高於溫度計讀數。33°C 配 75% 濕度，體感約 46°C——這是台灣夏天單看氣溫會漏掉的風險。</p>
+        <div class="scrollx"><table>
+          <thead><tr><th>體感溫度</th><th>風險</th><th>建議</th></tr></thead>
+          <tbody>
+          <tr><td><span class="swatch" style="background:#009966"></span>27°C 以下</td><td>舒適</td><td>正常活動</td></tr>
+          <tr><td><span class="swatch" style="background:#FFDE33"></span>27–32°C</td><td>注意</td><td>長時間戶外活動需補水</td></tr>
+          <tr><td><span class="swatch" style="background:#FF9933"></span>32–41°C</td><td>警戒</td><td>可能中暑，縮短戶外時段</td></tr>
+          <tr><td><span class="swatch" style="background:#CC0033"></span>41–54°C</td><td>危險</td><td>熱衰竭高風險，避免正午外出</td></tr>
+          <tr><td><span class="swatch" style="background:#660099"></span>54°C 以上</td><td>極度危險</td><td>可能熱中暑，應留在室內</td></tr>
+          </tbody>
+        </table></div>
+        <p style="margin-top:10px">濕度本身也有影響：低於 40% 會加重呼吸道與眼睛乾燥不適；高於 85% 利於黴菌與塵蟎，並抑制排汗散熱。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>「良好」不等於「無害」</summary>
+      <div class="body">
+        <p>AQI 的分級是風險管理門檻，不是安全線。世界衛生組織 2021 年指引把 PM2.5 年均建議值訂在 5 µg/m³、24 小時 15 µg/m³，遠比 AQI 分級嚴格。目前的流行病學研究並未找到 PM2.5 的健康效應下限——濃度越低越好，不存在「以下就完全安全」的數值。</p>
+        <p>所以這個 app 的用法是：綠色不代表可以不管，紅色代表必須立刻改變行為。真正該關注的是長期的累積暴露，那正是下方暴露紀錄與 CSV 匯出的用途。</p>
+        <p style="color:var(--muted)">分級依據：環境部空氣品質指標（114 年新制）。本頁為個人參考工具，不能取代官方警報或醫療判斷。</p>
+      </div>
+    </details>
   </section>
 
   <section>
@@ -270,7 +375,7 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 "use strict";
 
 /* ---------- storage with in-memory fallback ---------- */
-const BUILD = "2026-09-06d";
+const BUILD = "2026-09-06f";
 const mem = {};
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return k in mem ? mem[k] : null; } },
@@ -305,6 +410,23 @@ const HEAT = [
   {max:99, name:"極度危險",color:"#660099"}
 ];
 const heatBand = h => HEAT[Math.max(0,HEAT.findIndex(b=>h<=b.max))] || HEAT[4];
+
+/* 各污染物濃度 → 副指標值（環境部 114 年新制分段線性） */
+const BP = {
+  pm25:[[0,12.4,0,50],[12.5,30.4,51,100],[30.5,50.4,101,150],[50.5,125.4,151,200],[125.5,225.4,201,300],[225.5,325.4,301,400],[325.5,500.4,401,500]],
+  pm10:[[0,30,0,50],[31,75,51,100],[76,190,101,150],[191,354,151,200],[355,424,201,300],[425,504,301,400],[505,604,401,500]],
+  o3:  [[0,54,0,50],[55,70,51,100],[71,85,101,150],[86,105,151,200],[106,200,201,300]],
+  no2: [[0,21,0,50],[22,100,51,100],[101,360,101,150],[361,649,151,200],[650,1249,201,300],[1250,1649,301,400],[1650,2049,401,500]],
+  so2: [[0,8,0,50],[9,65,51,100],[66,160,101,150],[161,304,151,200],[305,604,201,300],[605,804,301,400],[805,1004,401,500]],
+  co:  [[0,4.4,0,50],[4.5,9.4,51,100],[9.5,12.4,101,150],[12.5,15.4,151,200],[15.5,30.4,201,300],[30.5,40.4,301,400],[40.5,50.4,401,500]]
+};
+function subIndex(key, c){
+  if(c === null || !BP[key]) return null;
+  const t = BP[key];
+  for(const [cl,ch,il,ih] of t)
+    if(c <= ch) return Math.round((ih-il)/(ch-cl)*(Math.max(c,cl)-cl)+il);
+  return 500;
+}
 
 /* 敏感族群：門檻下修 */
 const SENS = {general:0, resp:1, cardio:1, elder:1, child:1, preg:1};
@@ -463,22 +585,25 @@ function render(air, wx){
   $("#ibar").style.background = hb ? hb.color : "var(--line)";
 
   $("#poll").innerHTML = [
-    ["PM2.5", air.pm25, "µg/m³", 35],
-    ["PM10",  air.pm10, "µg/m³", 75],
-    ["臭氧 O₃", air.o3, "ppb", 60],
-    ["二氧化氮 NO₂", air.no2, "ppb", 100],
-    ["二氧化硫 SO₂", air.so2, "ppb", 75],
-    ["一氧化碳 CO", air.co, "ppm", 9]
-  ].map(([n,v,u,ref])=>{
-    const pct = v===null ? 0 : Math.min(100, v/ref*100);
-    const col = pct>100?"#CC0033":pct>66?"#FF9933":pct>33?"#FFDE33":"#009966";
-    return `<div class="cell"><div class="n">${n}</div><div class="d">${fmt(v, v!==null&&v<10?1:0)}<u>${u}</u></div>
-      <div class="g"><i style="width:${pct}%;background:${col}"></i></div></div>`;
+    ["PM2.5", air.pm25, "µg/m³", "pm25"],
+    ["PM10",  air.pm10, "µg/m³", "pm10"],
+    ["臭氧 O₃", air.o3, "ppb", "o3"],
+    ["二氧化氮 NO₂", air.no2, "ppb", "no2"],
+    ["二氧化硫 SO₂", air.so2, "ppb", "so2"],
+    ["一氧化碳 CO", air.co, "ppm", "co"]
+  ].map(([n,v,u,key])=>{
+    const si = subIndex(key, v);
+    const bd = si===null ? null : band(si);
+    const pct = si===null ? 0 : Math.min(100, si);
+    return `<div class="cell"><div class="n">${n}</div>
+      <div class="d">${fmt(v, v!==null&&v<10?1:0)}<u>${u}</u></div>
+      <div class="g"><i style="width:${pct}%;background:${bd?bd.color:"var(--line)"}"></i></div>
+      <div class="lv" style="color:${bd?(si>50?"#8a6d00":bd.color):"var(--muted)"}">${bd? bd.name.replace("對","").replace("族群","") + " " + si : "無資料"}</div></div>`;
   }).join("");
 
   $("#src").textContent = wx
-    ? `溫濕度取自 ${wx.name}氣象站（${wx.dist.toFixed(1)} 公里），觀測時間 ${wx.obs||"—"}。橫條以空氣品質標準值為滿格參考。`
-    : "溫濕度資料未取得。橫條以空氣品質標準值為滿格參考。";
+    ? `溫濕度取自 ${wx.name}氣象站（${wx.dist.toFixed(1)} 公里），觀測時間 ${wx.obs||"—"}。每項下方為該污染物換算後的副指標值，橫條滿格＝副指標 100。AQI 取六項中的最大值。`
+    : "溫濕度資料未取得。每項下方為該污染物換算後的副指標值，橫條滿格＝副指標 100。AQI 取六項中的最大值。";
 
   $("#advice").innerHTML = advise(air, wx, hi).map(([c,t])=>
     `<li style="--dot:${c}">${t}</li>`).join("");
