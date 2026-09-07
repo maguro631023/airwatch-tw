@@ -107,6 +107,15 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 .check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:15px}
 .check input{width:20px;height:20px;accent-color:var(--ink)}
 .note{font-size:12.5px;color:var(--muted);line-height:1.6}
+h2.lock{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
+.lockstate{font-size:11px;font-weight:600;letter-spacing:0;color:var(--muted);white-space:nowrap}
+.lockstate.open{color:#009966}
+.lockbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:-6px 0 12px;
+  opacity:0;transition:opacity .2s}
+.lockbar.on{opacity:1}
+.lockbar i{display:block;height:100%;width:0;background:var(--ink);border-radius:2px}
+input.masked{letter-spacing:.18em;color:var(--muted);background:#F6F8F9}
 .poll .cell .lv{font-size:11px;font-weight:600;margin-top:4px}
 .help details{border-top:1px solid var(--line);padding:13px 0}
 .help details:first-of-type{border-top:none;padding-top:0}
@@ -289,7 +298,8 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
     <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="wrap">
     <section>
-      <h2>資料來源金鑰</h2>
+      <h2 class="lock" id="keyLock">資料來源金鑰<span class="lockstate" id="lockState">長按 10 秒解鎖</span></h2>
+      <div class="lockbar" id="lockBar"><i></i></div>
       <div class="field">
         <label for="k1">環境部環境資料開放平臺 API Key</label>
         <input type="text" id="k1" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false">
@@ -375,7 +385,7 @@ td .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 "use strict";
 
 /* ---------- storage with in-memory fallback ---------- */
-const BUILD = "2026-09-06f";
+const BUILD = "2026-09-07a";
 const mem = {};
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return k in mem ? mem[k] : null; } },
@@ -764,25 +774,94 @@ function locate(){
   navigator.geolocation.watchPosition(onFix, onGeoErr, opt);
 }
 
+/* ---------- 金鑰遮罩與長按解鎖 ---------- */
+const HOLD_MS = 10000;
+const MASK = "••••••••••••••••";
+let unlocked = false, holdRaf = null, holdT0 = 0, relockTimer = null;
+
+function paintKeys(){
+  for(const id of ["k1","k2"]){
+    const el = $("#"+id), real = cfg[id];
+    if(!real){ el.value = ""; el.readOnly = false; el.classList.remove("masked"); continue; }
+    if(unlocked){ el.value = real; el.readOnly = false; el.classList.remove("masked"); }
+    else { el.value = MASK; el.readOnly = true; el.classList.add("masked"); }
+  }
+  const st = $("#lockState");
+  st.textContent = unlocked ? "已解鎖，可編輯" : "長按 10 秒解鎖";
+  st.classList.toggle("open", unlocked);
+}
+
+function unlock(on){
+  unlocked = on;
+  paintKeys();
+  if(!on && qrMode === "full"){
+    qrMode = "url";
+    document.querySelectorAll(".qtab").forEach(x => x.classList.toggle("on", x.dataset.mode === "url"));
+    renderQR();
+  }
+  clearTimeout(relockTimer);
+  if(on){
+    toast("金鑰已解鎖，2 分鐘後自動遮蔽");
+    relockTimer = setTimeout(() => { unlock(false); toast("金鑰已重新遮蔽"); }, 120000);
+  }
+}
+
+function holdStart(e){
+  if(unlocked){ unlock(false); toast("已重新遮蔽"); return; }
+  e.preventDefault();
+  holdT0 = performance.now();
+  const bar = $("#lockBar"), fill = bar.firstElementChild;
+  bar.classList.add("on");
+  const step = () => {
+    const pct = Math.min(1, (performance.now() - holdT0) / HOLD_MS);
+    fill.style.width = (pct*100) + "%";
+    const left = Math.ceil((1-pct) * HOLD_MS / 1000);
+    $("#lockState").textContent = left > 0 ? `持續按住　${left} 秒` : "解鎖中";
+    if(pct >= 1){ holdEnd(true); return; }
+    holdRaf = requestAnimationFrame(step);
+  };
+  holdRaf = requestAnimationFrame(step);
+}
+
+function holdEnd(done){
+  if(holdRaf){ cancelAnimationFrame(holdRaf); holdRaf = null; }
+  const bar = $("#lockBar");
+  bar.classList.remove("on");
+  bar.firstElementChild.style.width = "0";
+  if(done) unlock(true); else paintKeys();
+}
+
+const lockEl = () => $("#keyLock");
+["pointerdown"].forEach(ev => lockEl().addEventListener(ev, holdStart));
+["pointerup","pointercancel","pointerleave"].forEach(ev =>
+  lockEl().addEventListener(ev, () => { if(holdRaf) holdEnd(false); }));
+lockEl().addEventListener("contextmenu", e => e.preventDefault());
+
 /* ---------- settings UI ---------- */
 function loadForm(){
-  ["k1","k2","tAqi","tPm","tHi","tHum","grp","freq"].forEach(k => $("#"+k).value = cfg[k]);
+  ["tAqi","tPm","tHi","tHum","grp","freq"].forEach(k => $("#"+k).value = cfg[k]);
   $("#notify").checked = cfg.notify; $("#vibe").checked = cfg.vibe;
+  paintKeys();
 }
 function openPanel(){ loadForm(); renderQR(); $("#panel").classList.add("open"); }
 
 $("#gear").onclick = openPanel;
-$("#close").onclick = ()=> $("#panel").classList.remove("open");
+$("#close").onclick = ()=>{ $("#panel").classList.remove("open"); unlock(false); };
 $("#refresh").onclick = () => {
   if(!pos){ toast("重新定位中"); locate(); return; }
   tick();
 };
 $("#save").onclick = ()=>{
-  ["k1","k2","grp","freq"].forEach(k => cfg[k] = $("#"+k).value.trim());
+  ["grp","freq"].forEach(k => cfg[k] = $("#"+k).value.trim());
+  if(unlocked) ["k1","k2"].forEach(k => {
+    const v = $("#"+k).value.trim();
+    if(v && v !== MASK) cfg[k] = v;
+  });
   ["tAqi","tPm","tHi","tHum"].forEach(k => cfg[k] = parseFloat($("#"+k).value) || DEF[k]);
   cfg.notify = $("#notify").checked; cfg.vibe = $("#vibe").checked;
   store.set("aw.cfg", JSON.stringify(cfg));
   $("#panel").classList.remove("open");
+  unlock(false);
   toast("設定已儲存");
   renderQR();
   schedule(); tick();
@@ -1076,6 +1155,8 @@ function qrCanvas(scale){
 }
 
 document.querySelectorAll(".qtab").forEach(b => b.onclick = () => {
+  if(b.dataset.mode === "full" && !unlocked)
+    return toast("請先長按「資料來源金鑰」10 秒解鎖");
   document.querySelectorAll(".qtab").forEach(x => x.classList.remove("on"));
   b.classList.add("on"); qrMode = b.dataset.mode; renderQR();
 });
@@ -1093,6 +1174,7 @@ $("#qrcopy").onclick = async () => {
   catch(e){ toast("複製失敗，請長按 QR 下方網址"); }
 };
 $("#qrreset").onclick = () => {
+  if(!unlocked) return toast("請先長按「資料來源金鑰」10 秒解鎖");
   $("#k1").value = KEY1; $("#k2").value = KEY2;
   toast("已填回預設金鑰，記得按儲存");
 };
